@@ -9,14 +9,14 @@ rescue Bundler::BundlerError => e
   exit e.status_code
 end
 
-#require 'simplecov'
-#require 'coveralls'
-#Coveralls.wear!
+require 'simplecov'
+require 'coveralls'
+Coveralls.wear!
 
-#SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter[
-#  SimpleCov::Formatter::HTMLFormatter,
-#  Coveralls::SimpleCov::Formatter
-#]
+SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter[
+  SimpleCov::Formatter::HTMLFormatter,
+  Coveralls::SimpleCov::Formatter
+]
 
 require 'rspec'
 require 'multi_redis'
