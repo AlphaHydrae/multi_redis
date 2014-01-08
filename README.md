@@ -1,6 +1,6 @@
 # Multi Redis
 
-**Pattern to atomically execute redis operations in separate code units.**
+**Pattern to execute separate [redis-rb](https://github.com/redis/redis-rb) operations in the same command pipeline or multi/exec.**
 
 [![Gem Version](https://badge.fury.io/rb/multi_redis.png)](http://badge.fury.io/rb/multi_redis)
 [![Dependency Status](https://gemnasium.com/AlphaHydrae/multi_redis.png)](https://gemnasium.com/AlphaHydrae/multi_redis)
@@ -19,118 +19,120 @@ Then run `bundle install`.
 
 ## Usage
 
-Assume you have separate classes that use redis:
+Assume you have two separate methods that call redis:
 
 ```rb
-class RedisClass
+$redis = Redis.new
+$redis.set 'key1', 'foo'
+$redis.set 'key2', 'bar'
+$redis.set 'key3', 'baz'
 
-  def initialize redis
-    @redis = redis
-  end
-end
-
-class MyFirstClass < RedisClass
+class MyRedisClass
 
   def do_stuff
 
-    values = redis.multi do
-      redis.get 'foo'
-      redis.getset 'bar', 'newvalue'
+    # run two calls atomically in a MULTI/EXEC
+    values = $redis.multi do
+      $redis.get 'key1'
+      $redis.getset 'key2', 'newvalue'
     end
 
     "value 1 is #{values[0]}, value 2 is #{values[1]}"
   end
-end
 
-class MySecondClass < RedisClass
-
-  def do_stuff
-    value = redis.get 'baz'
-    "value is #{value}"
+  def do_other_stuff
+    value = $redis.get 'key3'
+    "hey #{value}"
   end
 end
 
-redis = Redis.new
-redis.set 'key1', 'foo'
-redis.set 'key2', 'bar'
-redis.set 'key3', 'baz'
-
-MyFirstClass.new(redis).do_stuff    #=> "value 1 is foo, value 2 is bar"
-MySecondClass.new(redis).do_stuff   #=> "value is baz"
+o = MyRedisClass.new
+o.do_stuff         #=> "value 1 is foo, value 2 is bar"
+o.do_other_stuff   #=> "hey baz"
 ```
 
-This works, but it would be faster if the redis operation in `MySecondClass` could be run in the same MULTI/EXEC block as the operations in `MyFirstClass`.
-It would also be atomic, which might be interesting in some scenarios.
+This works, but the redis client executes two separate requests to the server:
 
-Multi Redis provides a pattern to structure such code so that your separate redis calls may be executed together.
+```
+Request 1:
+- MULTI
+- GET foo
+- GETSET bar newvalue
+- EXEC
+
+Request 2:
+- GET baz
+```
+
+The client will wait for the response from the first request before starting the second one.
+One round trip could be saved by executing the second request in the same MULTI/EXEC block.
+But it would be hard to refactor these two methods to do that while still keeping them separate.
+
+Multi Redis provides a pattern to structure this code so that your separate redis calls may be executed together in one request when needed.
 
 ```rb
-redis = Redis.new
-redis.set 'key1', 'foo'
-redis.set 'key2', 'bar'
-redis.set 'key3', 'baz'
-
-# Set the client that Multi Redis operations will use.
-MultiRedis.redis = redis
+$redis = Redis.new
+$redis.set 'key1', 'foo'
+$redis.set 'key2', 'bar'
+$redis.set 'key3', 'baz'
 
 # Create a redis operation, i.e. an operation that performs redis calls.
-redis_operation_1 = MultiRedis::Operation.new do
+do_stuff = MultiRedis::Operation.new do
 
   # Multi blocks will be run atomically in a MULTI/EXEC.
   # All redis commands will return futures inside this block, so you can't use the values immediately.
   # Store futures in the provided data object for later use.
-  multi do |data, redis|
-    data.value1 = redis.get 'key1'
-    data.value2 = redis.getset 'key2', 'newvalue'
+  multi do |mr|
+    mr.data.value1 = $redis.get 'key1'
+    mr.data.value2 = $redis.getset 'key2', 'newvalue'
   end
 
   # Run blocks are executed after the previous multi block (or blocks) are completed and all futures have been resolved.
   # The data object now contains the values of the futures you stored.
-  run do |data|
-    "value 1 is #{data.value1}, value 2 is #{data.value2}"
+  run do |mr|
+    "value 1 is #{mr.data.value1}, value 2 is #{mr.data.value2}"
   end
 end
 
-# The return value of the operation is that of the last block.
-# In this case, that's the return value of the run block.
-result = redis_operation_1.execute   #=> "value 1 is foo, value 2 is bar"
+# The return value of the operation is that of the last run block.
+result = do_stuff.execute   #=> "value 1 is foo, value 2 is bar"
+
+# Create the other redis operation.
+do_other_stuff = MultiRedis::Operation.new do
+
+  multi do |mr|
+    mr.data.value = $redis.get 'key3'
+  end
+
+  run do |mr|
+    "hey #{mr.data.value}"
+  end
+end
+
+result = do_other_stuff.execute   #=> "hey baz"
 ```
 
-Now let's define the second operation.
+The two operations can still be executed separately like before, but they can also be combined through Multi Redis:
 
 ```rb
-# Create another redis operation.
-redis_operation_2 = MultiRedis::Operation.new do
+MultiRedis.execute do_stuff, do_other_stuff
+```
 
-  multi do |data, redis|
-    data.value = redis.get 'key3'
-  end
+All redis calls get grouped into the same MULTI/EXEC:
 
-  run do |data|
-    "value is #{data.value}"
-  end
-end
+```
+One request:
+- MULTI
+- GET foo
+- GETSET bar newvalue
+- GET baz
+- EXEC
+```
 
-# If you run both operations through Multi Redis, their multi block
-# will be executed in one MULTI/EXEC call to redis.
-results = MultiRedis.execute redis_operation_1, redis_operation_2
+The array of results is also returned by the `execute` call:
 
-# Resulting redis calls:
-# - MULTI
-# - GET foo
-# - GETSET bar newvalue
-# - GET baz
-# - EXEC
-
-# The final results of both operations are returned in an array.
-results   #=> [ "value 1 is foo, value 2 is bar", "value is baz" ]
-
-# This syntax is equivalent.
-results = MultiRedis.execute do
-  redis_operation_1.execute
-  redis_operation_2.execute
-end
-results   #=> [ "value 1 is foo, value 2 is bar", "value is baz" ]
+```rb
+MultiRedis.execute do_stuff, do_other_stuff   #=> [ 'value 1 is foo, value 2 is bar', 'hey baz' ]
 ```
 
 ## Meta

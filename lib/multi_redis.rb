@@ -9,6 +9,7 @@ module MultiRedis
   @mutex = Mutex.new
   @executing = false
   @operations = []
+  @arguments = []
 
   def self.redis= redis
     @redis = redis
@@ -20,23 +21,27 @@ module MultiRedis
 
   def self.execute *args, &block
 
-    operations = @mutex.synchronize do
-      @operations = args
+    operations, arguments = @mutex.synchronize do
+      @operations = args.dup
+      @arguments = []
       @executing = true
       yield if block_given?
       @executing = false
-      @operations.dup.tap{ |ops| @operations.clear }
+      [ @operations.dup.tap{ |ops| @operations.clear }, @arguments ]
     end
 
-    Executor.new(operations).execute
+    Executor.new(operations, args: arguments).execute
   end
 
   def self.executing?
     @executing
   end
 
-  def self.register_operation op
-    op.tap{ |op| @operations << op }
+  def self.register_operation op, *args
+    op.tap do |op|
+      @operations << op
+      @arguments << args
+    end
   end
 
   module Extension
@@ -46,6 +51,7 @@ module MultiRedis
       define_method symbol do |*args|
         op.execute *args
       end
+      self
     end
   end
 
@@ -53,20 +59,24 @@ module MultiRedis
     
     def initialize operations, options = {}
       @operations = operations
+      @arguments = options[:args] || []
       @redis = options[:redis]
     end
 
-    def execute
+    def execute options = {}
 
       redis = @redis || MultiRedis.redis
-      data = Array.new(@operations.length){ |i| Data.new }
+      contexts = Array.new(@operations.length){ |i| Context.new redis }
       stacks = @operations.collect{ |op| op.steps.dup }
+      args = stacks.collect.with_index{ |a,i| @arguments[i] || [] }
       final_results = Array.new @operations.length
 
       while stacks.any? &:any?
 
         # execute all non-multi steps
-        stacks.each_with_index{ |steps,i| final_results[i] = steps.shift.execute data[i], redis while steps.first && !steps.first.multi_type }
+        stacks.each_with_index do |steps,i|
+          final_results[i] = steps.shift.execute(contexts[i], args[i]) while steps.first && !steps.first.multi_type
+        end
 
         # execute all pipelined steps, if any
         pipelined_steps = stacks.collect{ |steps| steps.first && steps.first.multi_type == :pipelined ? steps.shift : nil }
@@ -75,13 +85,13 @@ module MultiRedis
           redis.pipelined do
             pipelined_steps.each_with_index do |step,i|
               if step
-                final_results[i] = step.execute data[i], redis
-                data[i].last_results = redis.client.futures[results.length, redis.client.futures.length]
-                results += data[i].last_results
+                final_results[i] = step.execute(contexts[i], args[i])
+                contexts[i].last_results = redis.client.futures[results.length, redis.client.futures.length]
+                results += contexts[i].last_results
               end
             end
           end
-          pipelined_steps.each_with_index{ |step,i| data[i].resolve_futures! if step }
+          pipelined_steps.each_with_index{ |step,i| contexts[i].resolve_futures! if step }
         end
 
         # execute all multi steps, if any
@@ -91,13 +101,13 @@ module MultiRedis
           redis.multi do
             multi_steps.each_with_index do |step,i|
               if step
-                final_results[i] = step.execute data[i], redis
-                data[i].last_results = redis.client.futures[results.length, redis.client.futures.length]
-                results += data[i].last_results
+                final_results[i] = step.execute(contexts[i], args[i])
+                contexts[i].last_results = redis.client.futures[results.length, redis.client.futures.length]
+                results += contexts[i].last_results
               end
             end
           end
-          multi_steps.each_with_index{ |step,i| data[i].resolve_futures! if step }
+          multi_steps.each_with_index{ |step,i| contexts[i].resolve_futures! if step }
         end
       end
 
@@ -119,16 +129,16 @@ module MultiRedis
       DSL.new(self).instance_eval &block
     end
 
-    def execute
+    def execute *args
       if MultiRedis.executing?
-        MultiRedis.register_operation self
+        MultiRedis.register_operation self, *args
       else
-        Executor.new([ self ], redis: @redis).execute.first
+        Executor.new([ self ], args: [ args ], redis: @redis).execute.first
       end
     end
 
-    def add_step klass, block
-      @steps << klass.new(@target, block)
+    def add_step multi_type = nil, &block
+      @steps << Step.new(@target, multi_type, block)
     end
 
     class DSL
@@ -138,86 +148,33 @@ module MultiRedis
       end
 
       def multi &block
-        @op.add_step MultiStep, block
+        @op.add_step :multi, &block
       end
 
       def pipelined &block
-        @op.add_step PipelinedStep, block
+        @op.add_step :pipelined, &block
       end
 
       def run &block
-        @op.add_step Step, block
+        @op.add_step &block
       end
     end
   end
 
   class Step
 
-    def initialize target, block
-      @target, @block = target, block
+    def initialize target, multi_type, block
+      @target, @multi_type, @block = target, multi_type, block
     end
 
-    def execute data, redis
-      @target.instance_exec data, &@block
-    end
-
-    def multi_type
-      nil
-    end
-  end
-
-  class MultiStep < Step
-
-    def execute data, redis
-      @target.instance_exec data, redis, &@block
+    def execute context, *args
+      @target.instance_exec *args.unshift(context), &@block
     end
 
     def multi_type
-      :multi
-    end
-  end
-
-  class PipelinedStep < MultiStep
-
-    def multi_type
-      :pipelined
-    end
-  end
-
-  class Data
-    attr_accessor :last_results
-
-    def initialize
-      @last_results = []
-      @data = Hash.new
-    end
-
-    def [] k
-      @data[k]
-    end
-
-    def []= k, v
-      @data[k] = v
-    end
-
-    def method_missing symbol, *args, &block
-      if @data.key? symbol
-        @data[symbol]
-      elsif m = symbol.to_s.match(/\A(.*)\=\Z/)
-        raise "Reserved name" if respond_to? acc = m[1].to_sym
-        @data[acc] = args[0]
-      else
-        super symbol, *args, &block
-      end
-    end
-
-    def resolve_futures!
-      @data.each_key do |k|
-        @data[k] = @data[k].value if @data[k].is_a? Redis::Future
-      end
-      @last_results.collect!{ |r| r.is_a?(Redis::Future) ? r.value : r }
+      @multi_type
     end
   end
 end
 
-#Dir[File.join File.dirname(__FILE__), File.basename(__FILE__, '.*'), '*.rb'].each{ |lib| require lib }
+Dir[File.join File.dirname(__FILE__), File.basename(__FILE__, '.*'), '*.rb'].each{ |lib| require lib }

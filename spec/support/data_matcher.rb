@@ -1,5 +1,5 @@
 
-RSpec::Matchers.define :be_data do |expected|
+RSpec::Matchers.define :have_data do |expected|
 
   match do |actual|
 
@@ -8,10 +8,10 @@ RSpec::Matchers.define :be_data do |expected|
 
     expected_pairs = expected.reject{ |k,v| k == :last_results }
 
-    value_mismatches = expected_pairs.select{ |k,v| actual[k] != expected[k] }
+    value_mismatches = expected_pairs.select{ |k,v| actual.data[k] != expected[k] }
     @pairs_match = value_mismatches.empty?
 
-    method_mismatches = expected_pairs.select{ |k,v| actual[k] != expected[k] rescue true }
+    method_mismatches = expected_pairs.select{ |k,v| actual.data[k] != expected[k] rescue true }
     @methods_match = method_mismatches.empty?
 
     @last_results_match && @pairs_match && @methods_match

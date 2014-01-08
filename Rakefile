@@ -17,7 +17,7 @@ Jeweler::Tasks.new do |gem|
   gem.name = "multi_redis"
   gem.homepage = "http://github.com/AlphaHydrae/multi_redis"
   gem.license = "MIT"
-  gem.summary = %Q{Pattern to atomically execute redis operations in separate code units.}
+  gem.summary = %Q{Pattern to execute separate redis-rb operations in the same command pipeline or multi/exec.}
   gem.description = %Q{Allows you to organize your redis calls in separate classes but still execute them atomically with pipelined or multi.}
   gem.email = "git@alphahydrae.com"
   gem.authors = ["Simon Oulevay"]

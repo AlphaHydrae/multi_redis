@@ -13,35 +13,35 @@ describe MultiRedis do
 
     m = MultiRedis::Operation.new self, redis: $redis do
 
-      multi do |data,redis|
+      multi do |mr|
 
-        expect(redis).to be($redis)
-        expect(data.last_results).to be_empty
+        expect(mr.redis).to be($redis)
+        expect(mr.last_results).to be_empty
 
-        data.a = redis.get key('foo')
-        redis.get key('baz')
-        data.b = redis.get key('bar')
-        data.c = 'string'
+        mr.data.a = mr.redis.get key('foo')
+        mr.redis.get key('baz')
+        mr.data.b = mr.redis.get key('bar')
+        mr.data.c = 'string'
       end
 
-      run do |data|
+      run do |mr|
 
-        expect(data).to be_data(a: '1', b: key('baz'), c: 'string', last_results: [ '1', '2', key('baz') ])
+        expect(mr).to have_data(a: '1', b: key('baz'), c: 'string', last_results: [ '1', '2', key('baz') ])
 
-        data.d = 'another string'
+        mr.data.d = 'another string'
       end
 
-      multi do |data,redis|
+      multi do |mr|
 
-        expect(redis).to be($redis)
-        expect(data).to be_data(a: '1', b: key('baz'), c: 'string', d: 'another string', last_results: [ '1', '2', key('baz') ])
+        expect(mr.redis).to be($redis)
+        expect(mr).to have_data(a: '1', b: key('baz'), c: 'string', d: 'another string', last_results: [ '1', '2', key('baz') ])
 
-        data.e = redis.get data.b
+        mr.data.e = mr.redis.get mr.data.b
       end
 
-      run do |data|
+      run do |mr|
 
-        expect(data).to be_data(a: '1', b: key('baz'), c: 'string', d: 'another string', e: '2', last_results: [ '2' ])
+        expect(mr).to have_data(a: '1', b: key('baz'), c: 'string', d: 'another string', e: '2', last_results: [ '2' ])
 
         'result'
       end
@@ -61,30 +61,30 @@ describe MultiRedis do
 
     op1 = MultiRedis::Operation.new self, redis: $redis do
 
-      multi do |data,redis|
-        data.a = redis.get key('foo')
-        data.b = redis.get key('bar')
-        expect(data.last_results).to be_empty
+      multi do |mr|
+        mr.data.a = mr.redis.get key('foo')
+        mr.data.b = mr.redis.get key('bar')
+        expect(mr.last_results).to be_empty
       end
 
-      run do |data|
-        expect(data.a).to eq('1')
-        expect(data.b).to eq('2')
-        expect(data.last_results).to eq([ '1', '2' ])
+      run do |mr|
+        expect(mr.data.a).to eq('1')
+        expect(mr.data.b).to eq('2')
+        expect(mr.last_results).to eq([ '1', '2' ])
         'result1'
       end
     end
 
     op2 = MultiRedis::Operation.new self, redis: $redis do
 
-      multi do |data,redis|
-        data.c = redis.get key('baz')
-        expect(data.last_results).to be_empty
+      multi do |mr|
+        mr.data.c = mr.redis.get key('baz')
+        expect(mr.last_results).to be_empty
       end
 
-      run do |data|
-        expect(data.c).to eq('3')
-        expect(data.last_results).to eq([ '3' ])
+      run do |mr|
+        expect(mr.data.c).to eq('3')
+        expect(mr.last_results).to eq([ '3' ])
         'result2'
       end
     end
@@ -100,24 +100,24 @@ describe MultiRedis do
 
     multi_redis_operation :op1 do
 
-      multi do |data,redis|
-        data.a = redis.get key('foo')
-        data.b = redis.get key('bar')
+      multi do |mr|
+        mr.data.a = mr.redis.get key('foo')
+        mr.data.b = mr.redis.get key('bar')
       end
 
-      run do |data|
-        { d: data.a, e: data.b }
+      run do |mr|
+        { d: mr.data.a, e: mr.data.b }
       end
     end
 
     multi_redis_operation :op2 do
 
-      multi do |data,redis|
-        data.c = redis.get key('baz')
+      multi do |mr|
+        mr.data.c = mr.redis.get key('baz')
       end
 
-      run do |data|
-        { f: data.c }
+      run do |mr|
+        { f: mr.data.c }
       end
     end
   end
