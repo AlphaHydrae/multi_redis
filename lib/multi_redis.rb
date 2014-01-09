@@ -3,7 +3,7 @@ require 'redis'
 require 'thread'
 
 module MultiRedis
-  VERSION = '0.1.0'
+  VERSION = '0.2.0'
 
   @redis = nil
   @mutex = Mutex.new
