@@ -89,7 +89,10 @@ describe MultiRedis do
       end
     end
 
-    results = MultiRedis::Executor.new([ op1, op2 ], redis: $redis).execute
+    executor = MultiRedis::Executor.new redis: $redis
+    executor.register op1
+    executor.register op2
+    results = executor.execute
 
     expect(results).to eq([ 'result1', 'result2' ])
   end

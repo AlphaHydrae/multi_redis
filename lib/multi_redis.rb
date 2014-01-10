@@ -7,9 +7,7 @@ module MultiRedis
 
   @redis = nil
   @mutex = Mutex.new
-  @executing = false
-  @operations = []
-  @arguments = []
+  @executor = nil
 
   def self.redis= redis
     @redis = redis
@@ -21,27 +19,24 @@ module MultiRedis
 
   def self.execute *args, &block
 
-    operations, arguments = @mutex.synchronize do
-      @operations = args.dup
-      @arguments = []
-      @executing = true
+    options = args.last.kind_of?(Hash) ? args.pop : {}
+
+    executor = @mutex.synchronize do
+      @executor = Executor.new options
+      args.each{ |op| @executor.register op }
       yield if block_given?
-      @executing = false
-      [ @operations.dup.tap{ |ops| @operations.clear }, @arguments ]
+      @executor
     end
 
-    Executor.new(operations, args: arguments).execute
+    executor.execute
   end
 
   def self.executing?
-    @executing
+    !!@executor
   end
 
   def self.register_operation op, *args
-    op.tap do |op|
-      @operations << op
-      @arguments << args
-    end
+    @executor.register op, *args
   end
 
   module Extension
@@ -56,11 +51,16 @@ module MultiRedis
   end
 
   class Executor
-    
-    def initialize operations, options = {}
-      @operations = operations
-      @arguments = options[:args] || []
+
+    def initialize options = {}
+      @operations = []
+      @arguments = []
       @redis = options[:redis]
+    end
+
+    def register operation, *args
+      @operations << operation
+      @arguments << args
     end
 
     def execute options = {}
@@ -111,12 +111,14 @@ module MultiRedis
         end
       end
 
+      final_results.each_with_index{ |results,i| @operations[i].future.value = results if @operations[i].future }
+
       final_results
     end
   end
 
   class Operation
-    attr_reader :steps
+    attr_reader :steps, :future
 
     def initialize *args, &block
 
@@ -132,8 +134,9 @@ module MultiRedis
     def execute *args
       if MultiRedis.executing?
         MultiRedis.register_operation self, *args
+        @future = Future.new
       else
-        Executor.new([ self ], args: [ args ], redis: @redis).execute.first
+        Executor.new(redis: @redis).tap{ |e| e.register self, *args }.execute.first
       end
     end
 
@@ -158,6 +161,27 @@ module MultiRedis
       def run &block
         @op.add_step &block
       end
+    end
+  end
+
+  class FutureNotReady < RuntimeError
+    
+      def initialize
+        super "Value will be available once the operation executes."
+      end
+    end
+
+  class Future
+    FutureNotReady = ::MultiRedis::FutureNotReady.new
+    attr_writer :value
+    
+    def initialize
+      @value = FutureNotReady
+    end
+
+    def value
+      raise @value if @value.kind_of? RuntimeError
+      @value
     end
   end
 
