@@ -11,7 +11,7 @@ describe MultiRedis do
     expect($redis.client).not_to receive(:call)
     expect($redis).to receive(:multi).twice.and_call_original
 
-    m = MultiRedis::Operation.new self, redis: $redis do
+    m = MultiRedis::Operation.new target: self, redis: $redis do
 
       multi do |mr|
 
@@ -59,7 +59,7 @@ describe MultiRedis do
     expect($redis.client).not_to receive(:call)
     expect($redis).to receive(:multi).once.and_call_original
 
-    op1 = MultiRedis::Operation.new self, redis: $redis do
+    op1 = MultiRedis::Operation.new target: self, redis: $redis do
 
       multi do |mr|
         mr.data.a = mr.redis.get key('foo')
@@ -75,7 +75,7 @@ describe MultiRedis do
       end
     end
 
-    op2 = MultiRedis::Operation.new self, redis: $redis do
+    op2 = MultiRedis::Operation.new target: self, redis: $redis do
 
       multi do |mr|
         mr.data.c = mr.redis.get key('baz')
@@ -90,8 +90,8 @@ describe MultiRedis do
     end
 
     executor = MultiRedis::Executor.new redis: $redis
-    executor.register op1
-    executor.register op2
+    executor.add op1
+    executor.add op2
     results = executor.execute
 
     expect(results).to eq([ 'result1', 'result2' ])

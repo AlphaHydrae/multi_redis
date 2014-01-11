@@ -1,4 +1,3 @@
-
 module MultiRedis
 
   class Context
@@ -10,6 +9,15 @@ module MultiRedis
       @redis = redis
     end
 
+    def execute shared_results, operation, *args
+      operation_result = operation.execute self, *args
+      if @resolve = @redis.client.respond_to?(:futures)
+        @last_results = @redis.client.futures[shared_results.length, @redis.client.futures.length]
+        shared_results.concat @last_results
+      end
+      operation_result
+    end
+
     def redis
       @redis
     end
@@ -19,8 +27,9 @@ module MultiRedis
     end
 
     def resolve_futures!
-      @data.contents.each_key do |k|
-        @data.contents[k] = @data.contents[k].value if @data.contents[k].is_a? Redis::Future
+      return unless @resolve
+      @data.each_key do |k|
+        @data[k] = @data[k].value if @data[k].is_a? Redis::Future
       end
       @last_results.collect!{ |r| r.is_a?(Redis::Future) ? r.value : r }
     end

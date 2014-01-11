@@ -13,6 +13,10 @@ require 'simplecov'
 require 'coveralls'
 Coveralls.wear!
 
+SimpleCov.configure do
+  add_filter 'spec/support'
+end
+
 SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter[
   SimpleCov::Formatter::HTMLFormatter,
   Coveralls::SimpleCov::Formatter
@@ -21,7 +25,7 @@ SimpleCov.formatter = SimpleCov::Formatter::MultiFormatter[
 require 'rspec'
 require 'set'
 
-Dir[File.dirname(__FILE__) + "/support/**/*.rb"].each { |f| require f }
+Dir[File.dirname(__FILE__) + "/support/**/*.rb"].each{ |f| require f }
 
 RSpec.configure do |config|
 
