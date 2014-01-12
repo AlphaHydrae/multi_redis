@@ -1,7 +1,7 @@
 require 'redis'
 
 module MultiRedis
-  VERSION = '0.2.0'
+  VERSION = '0.3.0'
 
   class << self
     attr_accessor :redis
