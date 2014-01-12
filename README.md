@@ -25,48 +25,46 @@ Assume you have two separate methods that call redis:
 $redis = Redis.new
 $redis.set 'key1', 'foo'
 $redis.set 'key2', 'bar'
-$redis.set 'key3', 'baz'
 
 class MyRedisClass
 
   def do_stuff
-
-    # run two calls atomically in a MULTI/EXEC
-    values = $redis.multi do
-      $redis.get 'key1'
-      $redis.getset 'key2', 'newvalue'
-    end
-
-    "value 1 is #{values[0]}, value 2 is #{values[1]}"
+    $redis.get 'key1'
   end
 
   def do_other_stuff
-    value = $redis.get 'key3'
-    "hey #{value}"
+    $redis.get 'key2'
   end
 end
 
 o = MyRedisClass.new
-o.do_stuff         #=> "value 1 is foo, value 2 is bar"
-o.do_other_stuff   #=> "hey baz"
+o.do_stuff         #=> "foo"
+o.do_other_stuff   #=> "bar"
 ```
 
-This works, but the redis client executes two separate requests to the server:
+This works, but the redis client executes two separate requests to the server, and waits for the result of the first one to start the second one:
 
 ```
 Request 1:
-- MULTI
-- GET foo
-- GETSET bar newvalue
-- EXEC
+- GET key1
 
 Request 2:
-- GET baz
+- GET key2
 ```
 
-The client will wait for the response from the first request before starting the second one.
-One round trip could be saved by executing the second request in the same MULTI/EXEC block.
-But it would be hard to refactor these two methods to do that while still keeping them separate.
+`redis-rb` allows you to run both in the same command pipeline:
+
+```rb
+results = $redis.pipelined do
+  $redis.get 'key1'
+  $redis.get 'key2'
+end
+
+results[0]   #=> "foo"
+results[1]   #=> "bar"
+```
+
+But it would be hard to refactor the two methods to use a pipeline while still keeping them separate.
 
 Multi Redis provides a pattern to structure this code so that your separate redis calls may be executed together in one request when needed.
 
@@ -74,42 +72,39 @@ Multi Redis provides a pattern to structure this code so that your separate redi
 $redis = Redis.new
 $redis.set 'key1', 'foo'
 $redis.set 'key2', 'bar'
-$redis.set 'key3', 'baz'
 
-# Create a redis operation, i.e. an operation that performs redis calls.
+# Create a redis operation, i.e. an operation that performs redis calls, for the first method.
 do_stuff = MultiRedis::Operation.new do
 
-  # Multi blocks will be run atomically in a MULTI/EXEC.
+  # Pipelined blocks will be run in a command pipeline.
   # All redis commands will return futures inside this block, so you can't use the values immediately.
-  # Store futures in the provided data object for later use.
-  multi do |mr|
-    mr.data.value1 = $redis.get 'key1'
-    mr.data.value2 = $redis.getset 'key2', 'newvalue'
+  pipelined do |mr|
+    $redis.get 'key1'
   end
 
-  # Run blocks are executed after the previous multi block (or blocks) are completed and all futures have been resolved.
-  # The data object now contains the values of the futures you stored.
+  # This run block will be executed after the pipelined block is completed and all futures have been resolved.
+  # The #last_results method of the Multi Redis context will return the results of all redis calls in the pipelined block.
   run do |mr|
-    "value 1 is #{mr.data.value1}, value 2 is #{mr.data.value2}"
+    mr.last_results[0]   # => "foo"
   end
 end
 
-# The return value of the operation is that of the last run block.
-result = do_stuff.execute   #=> "value 1 is foo, value 2 is bar"
+# The return value of the operation is that of the last block.
+result = do_stuff.execute   #=> "foo"
 
-# Create the other redis operation.
+# Create the redis operation for the other method.
 do_other_stuff = MultiRedis::Operation.new do
 
   multi do |mr|
-    mr.data.value = $redis.get 'key3'
+    $redis.get 'key2'
   end
 
   run do |mr|
-    "hey #{mr.data.value}"
+    mr.last_results[0]   #=> "bar"
   end
 end
 
-result = do_other_stuff.execute   #=> "hey baz"
+result = do_other_stuff.execute   #=> "bar"
 ```
 
 The two operations can still be executed separately like before, but they can also be combined through Multi Redis:
@@ -118,21 +113,18 @@ The two operations can still be executed separately like before, but they can al
 MultiRedis.execute do_stuff, do_other_stuff
 ```
 
-All redis calls get grouped into the same MULTI/EXEC:
+Both redis calls get grouped into the same command pipeline:
 
 ```
 One request:
-- MULTI
 - GET foo
-- GETSET bar newvalue
-- GET baz
-- EXEC
+- GET bar
 ```
 
-The array of results is also returned by the `execute` call:
+The array of results is returned by the `execute` call:
 
 ```rb
-MultiRedis.execute do_stuff, do_other_stuff   #=> [ 'value 1 is foo, value 2 is bar', 'hey baz' ]
+MultiRedis.execute do_stuff, do_other_stuff   #=> [ "foo", "bar" ]
 ```
 
 ## Meta
