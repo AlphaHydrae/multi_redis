@@ -50,7 +50,7 @@ describe MultiRedis do
     expect(results[1]).to eq('qux')
   end
 
-  it "should provide a data object that automatically resolves futures" do
+  it "should provide a data object that keeps track of results and automatically resolves futures" do
 
     $redis.set key('foo'), 1
     $redis.set key('bar'), key('baz')
@@ -60,6 +60,7 @@ describe MultiRedis do
 
       multi do |mr|
 
+        expect(mr.last_result).to be_nil
         expect(mr.last_replies).to be_empty
 
         mr.data.a = mr.redis.get key('foo')
@@ -70,6 +71,7 @@ describe MultiRedis do
 
       run do |mr|
 
+        expect(mr.last_result).to eq('string')
         expect(mr.last_replies).to eq([ '1', '2', key('baz') ])
 
         expect(mr.data.a).to eq('1')
@@ -81,6 +83,7 @@ describe MultiRedis do
 
       multi do |mr|
 
+        expect(mr.last_result).to eq('another string')
         expect(mr.last_replies).to eq([ '1', '2', key('baz') ])
 
         expect(mr.data.a).to eq('1')
@@ -93,6 +96,7 @@ describe MultiRedis do
 
       run do |mr|
 
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ '2' ])
 
         expect(mr.data.a).to eq('1')
@@ -121,7 +125,6 @@ describe MultiRedis do
     op1 = MultiRedis::Operation.new target: self do
 
       multi do |mr|
-        expect(mr.last_replies).to be_empty
         mr.data.a = mr.redis.get key('foo')
         mr.data.b = mr.redis.get key('bar')
       end
@@ -137,7 +140,6 @@ describe MultiRedis do
     op2 = MultiRedis::Operation.new target: self do
 
       multi do |mr|
-        expect(mr.last_replies).to be_empty
         mr.data.c = mr.redis.get key('baz')
       end
 

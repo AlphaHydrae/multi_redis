@@ -18,16 +18,21 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 11
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ '42' ])
+        true
       end
 
       multi do |mr|
         operations << 12
+        expect(mr.last_result).to be_true
+        expect(mr.last_replies).to eq([ '42' ])
         mr.data.d = mr.redis.incrby key('foo'), 24
       end
 
       run do |mr|
         operations << 13
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ 66 ])
         expect(mr.data.d).to eq(66)
         mr.data
@@ -43,23 +48,29 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 21
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ '66' ])
         expect(mr.data.a).to eq('66')
         expect(mr.redis.get(key('bar'))).to eq('24')
+        false
       end
 
       run do |mr|
         operations << 22
+        expect(mr.last_result).to be_false
+        nil
       end
 
       multi do |mr|
         operations << 23
+        expect(mr.last_result).to be_nil
         mr.data.e = mr.redis.incrby key('foo'), 34
         mr.redis.decr key('foo')
       end
 
       run do |mr|
         operations << 24
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ 100, 99 ])
         expect(mr.data.e).to eq(100)
         mr.data
@@ -70,24 +81,31 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 30
+        1
       end
 
       run do |mr|
         operations << 31
+        expect(mr.last_result).to eq(1)
+        2
       end
 
       run do |mr|
         operations << 32
+        expect(mr.last_result).to eq(2)
+        3
       end
 
       pipelined do |mr|
         operations << 33
+        expect(mr.last_result).to eq(3)
         mr.data.b = mr.redis.append key('baz'), 'bar'
         mr.data.c = mr.redis.get key('foo')
       end
 
       multi do |mr|
         operations << 34
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ 5, '42' ])
         expect(mr.data.b).to eq(5)
         expect(mr.data.c).to eq('42')
@@ -96,6 +114,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 35
+        expect(mr.last_result).to be_a_redis_future
         expect(mr.last_replies).to eq([ "OK" ])
         mr.data
       end

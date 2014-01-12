@@ -1,8 +1,8 @@
 module MultiRedis
 
   class Context
+    attr_accessor :last_result
     attr_accessor :last_replies
-    # TODO: add return value of last block
 
     def initialize redis
       @last_replies = []
@@ -11,12 +11,12 @@ module MultiRedis
     end
 
     def execute shared_results, operation, *args
-      operation_result = operation.execute self, *args
+      @last_result = operation.execute self, *args
       if @resolve = @redis.client.respond_to?(:futures)
         @last_replies = @redis.client.futures[shared_results.length, @redis.client.futures.length]
         shared_results.concat @last_replies
       end
-      operation_result
+      @last_result
     end
 
     def redis
