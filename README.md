@@ -12,7 +12,7 @@
 Put this in your Gemfile:
 
 ```rb
-gem 'multi_redis', '~> 0.1.0'
+gem 'multi_redis', '~> 0.3.0'
 ```
 
 Then run `bundle install`.
