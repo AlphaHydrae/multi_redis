@@ -14,11 +14,12 @@ module MultiRedis
     def execute options = {}
 
       redis = @redis || MultiRedis.redis
+      shared_context = Context.new redis
 
       total = 0
-      execution = Array.new @operations.length do |i|
-        total += @operations[i][:op].steps.length
-        OperationExecution.new @operations[i][:op], @operations[i][:args], redis
+      execution = @operations.collect do |operation|
+        total += operation[:op].steps.length
+        OperationExecution.new operation[:op], operation[:args], shared_context
       end
 
       while execution.any?{ |oe| !oe.done? } && total >= 1
@@ -31,10 +32,10 @@ module MultiRedis
           end
 
           if execution.any?{ |oe| oe.next? type }
-            shared_results = [] # TODO: use shared context object
+            shared_context.last_replies.clear
             redis.send type do
               execution.each do |oe|
-                oe.execute_current_step shared_results if oe.next? type
+                oe.execute_current_step if oe.next? type
               end
             end
             execution.each{ |oe| oe.resolve_futures! }
@@ -53,12 +54,12 @@ module MultiRedis
     class OperationExecution
       attr_reader :final_results
 
-      def initialize operation, args, redis
+      def initialize operation, args, shared_context
 
         @operation = operation
         @args = args
 
-        @context = Context.new redis
+        @context = Context.new shared_context.redis, shared_context
         @steps = operation.steps
 
         @current_index = 0
@@ -72,8 +73,8 @@ module MultiRedis
         current_step && current_step.type == type
       end
 
-      def execute_current_step shared_results = nil
-        results = @context.execute shared_results, current_step, *@args
+      def execute_current_step
+        results = @context.execute current_step, *@args
         @current_index += 1
         @final_results = results
       end

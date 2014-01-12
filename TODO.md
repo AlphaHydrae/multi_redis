@@ -1,0 +1,1 @@
+- Allow to define data requirements in step options or at runtime: step should not execute unless data.x is available.

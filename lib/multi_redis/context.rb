@@ -4,19 +4,25 @@ module MultiRedis
     attr_accessor :last_result
     attr_accessor :last_replies
 
-    def initialize redis
-      @last_replies = []
-      @data = Data.new
+    def initialize redis, shared_context = nil
       @redis = redis
+      @data = Data.new
+      @last_replies = []
+      @shared_context = shared_context
     end
 
-    def execute shared_results, operation, *args
+    def execute operation, *args
       @last_result = operation.execute self, *args
       if @resolve = @redis.client.respond_to?(:futures)
-        @last_replies = @redis.client.futures[shared_results.length, @redis.client.futures.length]
-        shared_results.concat @last_replies
+        @last_replies = @redis.client.futures[@shared_context.last_replies.length, @redis.client.futures.length]
+        @shared_context.last_replies.concat @last_replies
       end
+      @shared_context.last_result = @last_result
       @last_result
+    end
+
+    def shared
+      @shared_context
     end
 
     def redis
