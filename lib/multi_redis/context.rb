@@ -2,6 +2,7 @@ module MultiRedis
 
   class Context
     attr_accessor :last_results
+    # TODO: add return value of last block
 
     def initialize redis
       @last_results = []

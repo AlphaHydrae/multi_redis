@@ -24,11 +24,12 @@ module MultiRedis
       while execution.any?{ |oe| !oe.done? } && total >= 1
         total -= 1 # safeguard against infinite loop
 
-        execution.each do |oe|
-          oe.execute_current_step while oe.next? :call
-        end
-
         TYPES.each do |type|
+
+          execution.each do |oe|
+            oe.execute_current_step while oe.next? :call
+          end
+
           if execution.any?{ |oe| oe.next? type }
             shared_results = [] # TODO: use shared context object
             redis.send type do

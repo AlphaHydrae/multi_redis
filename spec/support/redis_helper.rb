@@ -11,9 +11,9 @@ module RedisSpecHelper
   end
 
   def expect_redis_calls options = {}
-    [ :call, :pipelined, :multi ].each do |type|
-      expect(number_of_redis_calls(type)).to eq(options[type].to_i)
-    end
+    expect(number_of_redis_calls(:call)).to eq(options[:call].to_i)
+    expect(number_of_redis_calls(:pipelined)).to eq(options[:pipelined].to_i)
+    expect(number_of_redis_calls(:multi)).to eq(options[:multi].to_i)
     expect(number_of_redis_calls).to eq(options.inject(0){ |memo,(k,v)| memo + v })
   end
 
@@ -32,8 +32,8 @@ module RedisSpecHelper
   # implementation changes.
   def watch_redis_calls
     return if @redis_calls
-    @redis_calls = { single: 0, multi: 0, pipelined: 0 }
-    stub_and_call_original($redis.client, :call){ @redis_calls[:single] += 1 }
+    @redis_calls = { call: 0, multi: 0, pipelined: 0 }
+    stub_and_call_original($redis.client, :call){ @redis_calls[:call] += 1 }
     stub_and_call_original($redis, :multi){ @redis_calls[:multi] += 1 }
     stub_and_call_original($redis, :pipelined){ @redis_calls[:pipelined] += 1 }
   end
