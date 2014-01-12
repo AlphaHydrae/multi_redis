@@ -30,13 +30,13 @@ describe MultiRedis do
     # A pipelined operation.
     op1 = MultiRedis::Operation.new target: self do
       pipelined{ |mr| mr.redis.get key('foo') }
-      run{ |mr| mr.last_results.first }
+      run{ |mr| mr.last_replies.first }
     end
 
     # Another pipelined operation.
     op2 = MultiRedis::Operation.new target: self do
       pipelined{ |mr| mr.redis.get key('baz') }
-      run{ |mr| mr.last_results.first }
+      run{ |mr| mr.last_replies.first }
     end
 
     watch_redis_calls
@@ -60,7 +60,7 @@ describe MultiRedis do
 
       multi do |mr|
 
-        expect(mr.last_results).to be_empty
+        expect(mr.last_replies).to be_empty
 
         mr.data.a = mr.redis.get key('foo')
         mr.redis.get key('baz')
@@ -70,7 +70,7 @@ describe MultiRedis do
 
       run do |mr|
 
-        expect(mr.last_results).to eq([ '1', '2', key('baz') ])
+        expect(mr.last_replies).to eq([ '1', '2', key('baz') ])
 
         expect(mr.data.a).to eq('1')
         expect(mr.data.b).to eq(key('baz'))
@@ -81,7 +81,7 @@ describe MultiRedis do
 
       multi do |mr|
 
-        expect(mr.last_results).to eq([ '1', '2', key('baz') ])
+        expect(mr.last_replies).to eq([ '1', '2', key('baz') ])
 
         expect(mr.data.a).to eq('1')
         expect(mr.data.b).to eq(key('baz'))
@@ -93,7 +93,7 @@ describe MultiRedis do
 
       run do |mr|
 
-        expect(mr.last_results).to eq([ '2' ])
+        expect(mr.last_replies).to eq([ '2' ])
 
         expect(mr.data.a).to eq('1')
         expect(mr.data.b).to eq(key('baz'))
@@ -121,13 +121,13 @@ describe MultiRedis do
     op1 = MultiRedis::Operation.new target: self do
 
       multi do |mr|
-        expect(mr.last_results).to be_empty
+        expect(mr.last_replies).to be_empty
         mr.data.a = mr.redis.get key('foo')
         mr.data.b = mr.redis.get key('bar')
       end
 
       run do |mr|
-        expect(mr.last_results).to eq([ '1', '2' ])
+        expect(mr.last_replies).to eq([ '1', '2' ])
         expect(mr.data.a).to eq('1')
         expect(mr.data.b).to eq('2')
         'result1'
@@ -137,12 +137,12 @@ describe MultiRedis do
     op2 = MultiRedis::Operation.new target: self do
 
       multi do |mr|
-        expect(mr.last_results).to be_empty
+        expect(mr.last_replies).to be_empty
         mr.data.c = mr.redis.get key('baz')
       end
 
       run do |mr|
-        expect(mr.last_results).to eq([ '3' ])
+        expect(mr.last_replies).to eq([ '3' ])
         expect(mr.data.c).to eq('3')
         'result2'
       end

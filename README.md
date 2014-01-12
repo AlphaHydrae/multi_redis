@@ -83,9 +83,9 @@ do_stuff = MultiRedis::Operation.new do
   end
 
   # This run block will be executed after the pipelined block is completed and all futures have been resolved.
-  # The #last_results method of the Multi Redis context will return the results of all redis calls in the pipelined block.
+  # The #last_replies method of the Multi Redis context will return the results of all redis calls in the pipelined block.
   run do |mr|
-    mr.last_results[0]   # => "foo"
+    mr.last_replies[0]   # => "foo"
   end
 end
 
@@ -100,7 +100,7 @@ do_other_stuff = MultiRedis::Operation.new do
   end
 
   run do |mr|
-    mr.last_results[0]   #=> "bar"
+    mr.last_replies[0]   #=> "bar"
   end
 end
 

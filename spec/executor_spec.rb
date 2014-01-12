@@ -18,7 +18,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 11
-        expect(mr.last_results).to eq([ '42' ])
+        expect(mr.last_replies).to eq([ '42' ])
       end
 
       multi do |mr|
@@ -28,7 +28,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 13
-        expect(mr.last_results).to eq([ 66 ])
+        expect(mr.last_replies).to eq([ 66 ])
         expect(mr.data.d).to eq(66)
         mr.data
       end
@@ -43,7 +43,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 21
-        expect(mr.last_results).to eq([ '66' ])
+        expect(mr.last_replies).to eq([ '66' ])
         expect(mr.data.a).to eq('66')
         expect(mr.redis.get(key('bar'))).to eq('24')
       end
@@ -60,7 +60,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 24
-        expect(mr.last_results).to eq([ 100, 99 ])
+        expect(mr.last_replies).to eq([ 100, 99 ])
         expect(mr.data.e).to eq(100)
         mr.data
       end
@@ -88,7 +88,7 @@ describe MultiRedis::Executor do
 
       multi do |mr|
         operations << 34
-        expect(mr.last_results).to eq([ 5, '42' ])
+        expect(mr.last_replies).to eq([ 5, '42' ])
         expect(mr.data.b).to eq(5)
         expect(mr.data.c).to eq('42')
         mr.redis.set key('baz'), 'qux'
@@ -96,7 +96,7 @@ describe MultiRedis::Executor do
 
       run do |mr|
         operations << 35
-        expect(mr.last_results).to eq([ "OK" ])
+        expect(mr.last_replies).to eq([ "OK" ])
         mr.data
       end
     end
