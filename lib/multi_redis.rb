@@ -11,11 +11,13 @@ module MultiRedis
 
     options = args.last.kind_of?(Hash) ? args.pop : {}
 
-    executor = @mutex.synchronize do
+    executor = nil
+    @mutex.synchronize do
       @executor = Executor.new options
       args.each{ |op| @executor.add op }
       yield if block_given?
-      @executor
+      executor = @executor
+      @executor = nil
     end
 
     executor.execute
