@@ -52,7 +52,7 @@ Request 2:
 - GET key2
 ```
 
-`redis-rb` allows you to run both in the same command pipeline:
+The `redis-rb` gem allows you to run both calls in the same command pipeline:
 
 ```rb
 results = $redis.pipelined do
@@ -64,47 +64,36 @@ results[0]   #=> "foo"
 results[1]   #=> "bar"
 ```
 
-But it would be hard to refactor the two methods to use a pipeline while still keeping them separate.
+There is only one request now, but the two `$redis.get` calls are no longer in separate methods.
+To keep them separate, you would have to write your methods so that they could be called in a pipeline.
+But in a pipeline redis calls return futures, not values, because the calls have not been executed yet.
 
-Multi Redis provides a pattern to structure this code so that your separate redis calls may be executed together in one request when needed.
+Multi Redis provides a pattern to more easily handle these futures.
+It allows you to structure your code so that your separate redis calls may be executed together in one request when needed.
 
 ```rb
 $redis = Redis.new
 $redis.set 'key1', 'foo'
 $redis.set 'key2', 'bar'
 
-# Create a redis operation, i.e. an operation that performs redis calls, for the first method.
+MultiRedis.redis = $redis   # Give Multi Redis a redis-rb client to use.
+
+# Create a redis operation, i.e. an operation that performs redis calls, equivalent to the first method.
 do_stuff = MultiRedis::Operation.new do
-
-  # Pipelined blocks will be run in a command pipeline.
-  # All redis commands will return futures inside this block, so you can't use the values immediately.
-  pipelined do |mr|
-    $redis.get 'key1'
-  end
-
-  # This run block will be executed after the pipelined block is completed and all futures have been resolved.
-  # The #last_replies method of the Multi Redis context will return the results of all redis calls in the pipelined block.
-  run do |mr|
-    mr.last_replies[0]   # => "foo"
-  end
+  pipelined{ |mr| mr.redis.get 'key1' }   # Run your redis command in a pipelined block. It will return a future.
+  run{ |mr| mr.last_replies[0] }        # Access the result in a run block. The future has been resolved.
 end
 
-# The return value of the operation is that of the last block.
-result = do_stuff.execute   #=> "foo"
+# Executing the operation will run all blocks in order and return the result of the last block.
+do_stuff.execute   #=> "foo"
 
-# Create the redis operation for the other method.
+# Create another redis operation for the other method.
 do_other_stuff = MultiRedis::Operation.new do
-
-  multi do |mr|
-    $redis.get 'key2'
-  end
-
-  run do |mr|
-    mr.last_replies[0]   #=> "bar"
-  end
+  pipelined{ |mr| mr.redis.get 'key2' }
+  run{ |mr| mr.last_replies[0] }
 end
 
-result = do_other_stuff.execute   #=> "bar"
+do_other_stuff.execute   #=> "bar"
 ```
 
 The two operations can still be executed separately like before, but they can also be combined through Multi Redis:
